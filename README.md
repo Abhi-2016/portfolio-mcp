@@ -94,6 +94,25 @@ Hybrid wasn't treated as a strictly-better answer. It's more code than either pu
 **PM reflection**
 When two options have complementary failure modes, the question isn't "which one do I pick" — it's whether combining them costs less than the failure mode you're avoiding. Here it did, mostly because the embedding infrastructure was already built and understood from a prior project ([pdf-rag](https://github.com/Abhi-2016/pdf-rag)), which is what made the hybrid's added cost small enough to be worth it.
 
+### `get_key_decisions` Coverage: Content Gap, Not an Architecture Gap
+
+> *Answer to: "Tell me about a time you almost over-engineered a solution."*
+
+**Setup**
+Designing `get_key_decisions` — a tool meant to return "why did this project choose X over Y" for any of the 5 portfolio projects.
+
+**The problem**
+An architecture review found the 5 projects inconsistent in a way that looked like a system design problem: one project had a clean decision table, another's rationale lived in prose plus a separate mistakes log, a third had its reasoning structured under prose headers instead of a table, a fourth only had a tangential comparison framework, and a fifth had no dedicated decisions section at all.
+
+**The diagnosis**
+The instinct was to treat this like the concept-taxonomy decision above — write parsing logic to normalize whatever shape of content exists into one structure, possibly with LLM-assisted extraction from prose. But before building that, the actual question was what kind of problem this was. It wasn't a data-shape problem needing an engineering fix — it was a documentation gap. Some repos genuinely hadn't written this content down yet; others had it in a different but equally complete format; one just needed reformatting, not new content.
+
+**The decision**
+No parser, no normalization logic, no LLM extraction pipeline. The fix was writing the missing content directly and reformatting what already existed — all 5 repos now share an identical decision-table format. `get_key_decisions` does uniform extraction across all 5, nothing more.
+
+**PM reflection**
+Not every inconsistency needs an engineering solution. Before reaching for a parser or normalization layer, it's worth checking whether the "inconsistency" is a real data-shape problem or just unfinished content in disguise. Automating around a content gap doesn't close it — it hides it.
+
 ---
 
 ## Roadmap

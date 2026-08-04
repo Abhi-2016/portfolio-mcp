@@ -38,8 +38,8 @@ See PLAN.md for the full content model, MCP tool list, and stack table. Summary:
 
 ## Open Questions (see PLAN.md for full detail)
 1. ~~Concept taxonomy~~ — ✅ **Resolved.** Hybrid: ~20 canonical labels + embedding-based auto-assignment (reuses pdf-rag's sentence-transformers pattern), with raw fallback search for novel queries. Full decision + interview story in PLAN.md Decisions Log and README.md.
-2. `get_key_decisions` uneven coverage across the 5 source projects (**next up**)
-3. No freshness/versioning field in the schema
+2. ~~`get_key_decisions` uneven coverage~~ — ✅ **Resolved.** Diagnosed as a content gap, not an architecture gap — all 5 repos now share an identical decision-table format directly, no parser normalization needed. Full writeup in PLAN.md Decisions Log and README.md.
+3. No freshness/versioning field in the schema (**next up**)
 4. No fuzzy-matching for project name lookups — note: #1's embedding infra likely solves this too, same mechanism, different corpus (5 project names vs. ~110 concept phrases)
 5. Web chat backend cost exposure (separate risk from MCP server access)
 6. Two-service architecture — needs explicit confirmation
