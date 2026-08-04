@@ -61,9 +61,9 @@ Kept deliberately small — research-synthesizer's own Week 5 finding (3 tools �
 | Access control | Fully open, no auth | Content isn't sensitive; simplest to ship |
 
 ### Open Questions
-Surfaced during architecture review on 2026-08-03. None of these are resolved yet — listed in the order we plan to work through them.
+Surfaced during architecture review on 2026-08-03. Listed in the order we planned to work through them.
 
-1. **Concept taxonomy** — do we extract tags from what each project already wrote (categories and wording differ across all 5 — e.g. Ghost-Cart has 3 categories, pdf-rag has 5, Circadia has 2), or define a fixed vocabulary up front so `search_concept` matches consistently? This is the most important open item — it's the tool that makes the whole server worth building. **Next up.**
+1. ~~**Concept taxonomy**~~ — ✅ **Resolved 2026-08-03.** Hybrid approach: ~20 canonical concept labels for enumerability/determinism, with embedding-based cosine similarity (reusing pdf-rag's sentence-transformers pattern) auto-assigning the ~110 source phrases into those labels instead of manual mapping. Queries that match a canonical label resolve deterministically; novel queries fall back to raw phrase-level embedding search. Full reasoning in the Decisions Log below.
 2. **`get_key_decisions` uneven coverage** — Ghost-Cart and AgileBot have clean "why X over Y" tables; Circadia's reasoning is scattered across prose and its Wrong Calls table; pdf-rag has a comparison table, not a decisions table. Decide whether the parser normalizes/synthesizes a decisions table for projects that don't have one verbatim, or whether uneven depth per project is acceptable.
 3. **No freshness/versioning field in the schema** — nothing captures when a project was last parsed, so served content can silently drift from the live README.
 4. **No fuzzy-matching or error handling for project name lookups** — tool inputs are LLM-generated, not a dropdown; a typo or paraphrase ("the sleep app" instead of "Circadia") isn't designed for yet.
@@ -73,7 +73,36 @@ Surfaced during architecture review on 2026-08-03. None of these are resolved ye
 
 ---
 
+## Decisions Log
+
+### Decision #1 — Concept Taxonomy: Hybrid (canonical buckets + embedding matching)
+**Resolved:** 2026-08-03
+
+> *Answer to: "Tell me about a tradeoff you had to reason through on an AI feature."*
+
+**Setup**
+Designing `search_concept` for the MCP server — ask "what's your experience with evals?" and get an answer synthesized across every project that touched it, not just one README. That only works if "evals" reliably matches however each project actually phrased it — "Eval Suite," "LLM-as-judge," "Evaluator rubric design" — which don't share exact wording.
+
+**The problem**
+Two options on the table. A fixed vocabulary — define canonical concepts, map every phrase to one — gives deterministic, explainable matches. But before picking it, the actual scope got counted first: roughly 110 distinct concept entries across 5 repos. That's not a design decision at that scale, that's a data-entry project, and it doesn't scale — every new project or README edit adds more unmapped phrases. The alternative, embedding-based similarity search, scales automatically and needs zero manual mapping — but loses the enumerable, explainable vocabulary. No clean way to list "here's what I can answer questions about" from raw embeddings, and every match becomes a similarity score instead of a rule you can point to.
+
+**The decision**
+Rather than pick a side, the two options' weaknesses turned out to be complementary, not competing — Option A's cost was manual labor, Option B's cost was no enumerable output. So: keep ~20 canonical concept labels for display and determinism, but use embeddings to auto-assign the 110 source phrases into those buckets instead of sorting them by hand — cutting the manual work from "decide 110 placements" to "review the ~15 the embedding model got wrong." Queries that clearly match a canonical bucket resolve deterministically; anything novel falls back to raw embedding search so it's never a hard miss.
+
+**Why this wasn't free**
+Hybrid wasn't treated as a strictly-better answer. It's more code than either pure option — two resolution paths to build and evaluate instead of one — and it still carries the embedding infrastructure cost that the pure fixed-vocabulary option would have avoided entirely. Chosen because determinism-where-possible plus coverage-where-not was worth that added surface area; that's a call, not a free lunch.
+
+**PM reflection**
+When two options have complementary failure modes, the question isn't "which one do I pick" — it's whether combining them costs less than the failure mode you're avoiding. Here it did, mostly because the embedding infrastructure was already built and understood from a prior project (pdf-rag), which is what made the hybrid's added cost small enough to be worth it.
+
+**Follow-up hooks:**
+- *"Why not just use the fixed vocabulary from the start?"* → Sized the manual-mapping cost first (110 phrases) — it doesn't scale, and the embedding pattern was already built and understood from pdf-rag, so automating the mapping was close to free.
+- *"How do you know the auto-assigned buckets are actually correct?"* → Open item — this decision hasn't been eval'd yet, only designed. Next step is defining what "correct bucket assignment" means well enough to test it.
+
+---
+
 ## Progress Log
 | Date | Milestone |
 |---|---|
 | 2026-08-03 | Project initiated. Content schema, 5 MCP tools, and stack (Python/FastMCP/Streamable HTTP/Railway) designed and agreed. Ground rules imported from Circadia and adapted: eval scope widened to tool + conversational layers (rule 5), dual-purpose framing added (rule 9), deployment-approval rule added (rule 14). Architecture reviewed — 7 open items surfaced, concept taxonomy identified as highest priority. Project name not yet chosen. |
+| 2026-08-03 | Open question #1 (concept taxonomy) resolved — hybrid approach (canonical buckets + embedding-based auto-assignment). Full decision + interview story documented in Decisions Log. |
