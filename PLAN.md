@@ -55,8 +55,9 @@ Kept deliberately small — research-synthesizer's own Week 5 finding (3 tools �
 |---|---|---|
 | MCP server | Python + FastMCP | Reuses existing Python fluency (pdf-rag, research-synthesizer, AgileBot, Ghost-Cart's `brain`) — no new language |
 | Transport | Streamable HTTP | Current standard for remote MCP servers (replaces SSE-only) |
-| Content ingestion | One-time parser script → structured JSON from the 5 READMEs | Avoids fragile live markdown parsing on every query; re-run script when a README changes |
+| Content ingestion | Parser → structured JSON, re-run automatically by an in-process background job inside the MCP server (daily) | Avoids fragile live markdown parsing on every query; refresh job also discovers new repos via the GitHub API rather than a hardcoded list of 5 — see Decision #3 |
 | Hosting | Railway | One-click FastMCP deploy template exists; reuses account/deployment experience from Ghost-Cart |
+| Service count | 2 — MCP server (refresh job included) + web chat backend | Confirmed in Decision #3 — the refresh job is a batch-update concern, not a live-query concern, so it doesn't need to be a third service |
 | Web chat backend | Hand-rolled Claude tool-use loop (`tool_choice="auto"`) — **flagged for reconsideration, see open questions below** | Was chosen to reuse the agentic-loop pattern already built in Ghost-Cart's Restock/Nudge agents and research-synthesizer's ReAct loop, rather than the managed MCP connector (beta) |
 | Access control | Fully open, no auth | Content isn't sensitive; simplest to ship |
 
@@ -65,10 +66,10 @@ Surfaced during architecture review on 2026-08-03. Listed in the order we planne
 
 1. ~~**Concept taxonomy**~~ — ✅ **Resolved 2026-08-03.** Hybrid approach: ~20 canonical concept labels for enumerability/determinism, with embedding-based cosine similarity (reusing pdf-rag's sentence-transformers pattern) auto-assigning the ~110 source phrases into those labels instead of manual mapping. Queries that match a canonical label resolve deterministically; novel queries fall back to raw phrase-level embedding search. Full reasoning in the Decisions Log below.
 2. ~~**`get_key_decisions` uneven coverage**~~ — ✅ **Resolved 2026-08-03.** Turned out not to be an engineering problem — see Decisions Log below. All 5 source repos now share an identical decision-table format (`Decision | What | Why`); `get_key_decisions` needs uniform extraction only, no normalization logic.
-3. **No freshness/versioning field in the schema** — nothing captures when a project was last parsed, so served content can silently drift from the live README.
+3. ~~**No freshness/versioning field in the schema**~~ — ✅ **Resolved 2026-08-03, together with #6.** In-process background refresh job inside the MCP server, no third service. Full reasoning in Decisions Log.
 4. **No fuzzy-matching or error handling for project name lookups** — tool inputs are LLM-generated, not a dropdown; a typo or paraphrase ("the sleep app" instead of "Circadia") isn't designed for yet.
 5. **Web chat backend cost exposure** — the "fully open, no auth" access decision was made for the MCP server broadly, but the MCP server itself just serves static JSON (cheap). The web chat backend calls the Claude API on every message (not cheap, unbounded if scraped or abused). These are two different risk surfaces and only one was actually assessed as low-risk.
-6. **Two-service architecture not yet explicitly confirmed** — the MCP server (FastMCP, tools) and the web chat backend (Claude API + loop + frontend) are separate deployables, same shape as Ghost-Cart's gateway/brain split. Needs explicit confirmation before Railway setup, since it means two services to deploy and wire together.
+6. ~~**Two-service architecture not yet explicitly confirmed**~~ — ✅ **Resolved 2026-08-03, together with #3.** Confirmed: 2 services (MCP server, web chat backend). The refresh job from #3 lives inside the MCP server as a background task, not a third service. Full reasoning in Decisions Log.
 7. **Web chat backend loop approach** — hand-rolled tool-use loop vs. Claude's managed MCP connector (beta). Provisionally hand-rolled, but the user has reservations to work through before this is final.
 
 ---
@@ -126,6 +127,33 @@ Not every inconsistency needs an engineering solution. Before reaching for a par
 - *"Why not have Claude generate the missing decision tables from the project code?"* → Considered and rejected, same reasoning as Decision #1's authenticity line — this portfolio represents someone's own thinking, and auto-generating "why I made this choice" content blurs whose reasoning it actually is.
 - *"Doesn't this mean the design work on this tool was wasted?"* → No — the review is what revealed it was a content gap, not an architecture gap. Skipping the review and building a normalization parser first would have been the wasted work.
 
+### Decision #3 — Freshness & Service Count: In-Process Background Refresh, Not a Third Service
+**Resolved:** 2026-08-03 (open questions #3 and #6 resolved together)
+
+> *Answer to: "Tell me about a time a new requirement almost added unnecessary infrastructure."*
+
+**Setup**
+Two open questions turned out to be coupled: #3 (how does content freshness get maintained, and how do new GitHub projects get discovered automatically) and #6 (is this a two-service or three-service architecture).
+
+**The problem**
+The natural first instinct for freshness was "add a cron job." But a cron job is typically its own deployable — which immediately raises a second problem: how does its output (a re-parsed, re-embedded dataset) reach the MCP server that actually answers queries? That requires shared storage — a database or volume — between two independently deployed services, just to move a JSON file on a schedule.
+
+**The diagnosis**
+Separated two different kinds of components that had gotten conflated: **services that answer live queries** vs. **jobs that run on a schedule and update data**. Only the first kind changes the service count. Freshness is a batch-update concern, not a live-query concern — it doesn't need to be a service at all.
+
+**The decision**
+The refresh logic — GitHub API discovery of all repos (not a hardcoded list of 5), re-parsing, re-embedding new content into the Decision #1 taxonomy — runs as an in-process background task inside the MCP server's own process, on a daily schedule. It updates the MCP server's own dataset directly, no shared storage needed. The refresh capability is also entirely internal: no public MCP tool exposes it, protecting the lean 5-tool surface from Decision #1's token-cost lesson. External users never trigger or see a refresh — they just get an answer that happens to already reflect whatever the last cycle picked up. Final shape: 2 services (MCP server with refresh built in, web chat backend), not 3.
+
+**Why this wasn't free**
+An in-process scheduler resets on every redeploy of the MCP server, so freshness is bounded by "however long since the last restart," not a hard guarantee. That's an acceptable tradeoff at a refresh cadence of roughly daily against a source update cadence of a few times a week — it would be the wrong call for a system that needed near-real-time freshness, where the shared-storage cost of a separate service would actually be justified.
+
+**PM reflection**
+A new requirement doesn't automatically need a new architectural tier. Before adding a service, check whether the new capability is a live-query concern or a batch-update concern — conflating the two is how systems accumulate services that don't need to exist.
+
+**Follow-up hooks:**
+- *"What happens if a source repo updates right after a refresh cycle just ran?"* → It's stale until the next cycle. Acceptable given the daily cadence against a few-times-a-week update frequency — the parameter to shrink first if that ever stopped being true.
+- *"Why not expose a 'refresh now' tool for external users?"* → Considered and rejected — same token-cost reasoning as Decision #1. Every tool in the public schema costs tokens on every single query, for a capability almost no external user would ever invoke.
+
 ---
 
 ## Progress Log
@@ -134,3 +162,4 @@ Not every inconsistency needs an engineering solution. Before reaching for a par
 | 2026-08-03 | Project initiated. Content schema, 5 MCP tools, and stack (Python/FastMCP/Streamable HTTP/Railway) designed and agreed. Ground rules imported from Circadia and adapted: eval scope widened to tool + conversational layers (rule 5), dual-purpose framing added (rule 9), deployment-approval rule added (rule 14). Architecture reviewed — 7 open items surfaced, concept taxonomy identified as highest priority. Project name not yet chosen. |
 | 2026-08-03 | Open question #1 (concept taxonomy) resolved — hybrid approach (canonical buckets + embedding-based auto-assignment). Full decision + interview story documented in Decisions Log. |
 | 2026-08-03 | Open question #2 (`get_key_decisions` uneven coverage) resolved — diagnosed as a content gap, not an architecture gap. All 5 source repos brought to an identical decision-table format directly; no parser normalization logic needed. |
+| 2026-08-03 | Open questions #3 (freshness/refresh) and #6 (service count) resolved together — in-process background refresh job inside the MCP server (GitHub API discovery + re-parse + re-embed), not a third service. Refresh is internal-only, no public tool exposes it. Architecture confirmed at 2 services. |

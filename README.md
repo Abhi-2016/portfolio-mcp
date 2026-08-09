@@ -113,6 +113,25 @@ No parser, no normalization logic, no LLM extraction pipeline. The fix was writi
 **PM reflection**
 Not every inconsistency needs an engineering solution. Before reaching for a parser or normalization layer, it's worth checking whether the "inconsistency" is a real data-shape problem or just unfinished content in disguise. Automating around a content gap doesn't close it — it hides it.
 
+### Freshness & Service Count: In-Process Background Refresh, Not a Third Service
+
+> *Answer to: "Tell me about a time a new requirement almost added unnecessary infrastructure."*
+
+**Setup**
+Two open questions turned out to be coupled: how does content freshness get maintained (including discovering brand-new projects, not just updates to known ones), and how many services does this system actually need.
+
+**The problem**
+The natural first instinct for freshness was "add a cron job." But a cron job is typically its own deployable — which raises a second problem: how does its output reach the service that actually answers queries? That requires shared storage between two independently deployed services, just to move a small dataset on a schedule.
+
+**The diagnosis**
+Separated two different kinds of components that had gotten conflated: services that answer live queries vs. jobs that run on a schedule and update data. Only the first kind changes the service count. Freshness is a batch-update concern, not a live-query concern — it doesn't need to be a service at all.
+
+**The decision**
+The refresh logic — discovering all repos via the GitHub API rather than a hardcoded list, re-parsing, re-embedding new content into the concept taxonomy above — runs as an in-process background task inside the MCP server itself, on a daily schedule. It updates the server's own dataset directly, no shared storage needed. The refresh capability is also entirely internal — no public tool exposes it, protecting the lean 5-tool surface from the token-cost lesson above. External users never trigger or see a refresh; they just get an answer that already reflects whatever the last cycle picked up. Final shape: 2 services, not 3.
+
+**PM reflection**
+A new requirement doesn't automatically need a new architectural tier. Before adding a service, check whether the new capability is a live-query concern or a batch-update concern — conflating the two is how systems accumulate services that don't need to exist.
+
 ---
 
 ## Roadmap

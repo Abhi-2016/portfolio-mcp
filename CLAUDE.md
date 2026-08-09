@@ -29,20 +29,20 @@ See PLAN.md for the full content model, MCP tool list, and stack table. Summary:
 | Layer | Choice |
 |---|---|
 | MCP server | Python + FastMCP, Streamable HTTP |
-| Content | Parsed once from the 5 READMEs into structured JSON |
+| Content | Parsed from the 5+ READMEs into structured JSON; refreshed automatically by an in-process background job (daily, GitHub API discovery) |
 | Hosting | Railway |
 | Web chat backend | Under review — hand-rolled tool-use loop vs. Claude's MCP connector |
 | Access control | MCP server: fully open. Web chat backend cost exposure: unresolved (see Open Questions) |
 
-**This is a two-service architecture** (MCP server + web chat backend), same shape as Ghost-Cart's gateway/brain split — pending explicit confirmation (see PLAN.md Open Questions #6).
+**Confirmed: 2-service architecture** — MCP server (refresh job included, internal-only) + web chat backend, same shape as Ghost-Cart's gateway/brain split.
 
 ## Open Questions (see PLAN.md for full detail)
 1. ~~Concept taxonomy~~ — ✅ **Resolved.** Hybrid: ~20 canonical labels + embedding-based auto-assignment (reuses pdf-rag's sentence-transformers pattern), with raw fallback search for novel queries. Full decision + interview story in PLAN.md Decisions Log and README.md.
 2. ~~`get_key_decisions` uneven coverage~~ — ✅ **Resolved.** Diagnosed as a content gap, not an architecture gap — all 5 repos now share an identical decision-table format directly, no parser normalization needed. Full writeup in PLAN.md Decisions Log and README.md.
-3. No freshness/versioning field in the schema (**next up**)
-4. No fuzzy-matching for project name lookups — note: #1's embedding infra likely solves this too, same mechanism, different corpus (5 project names vs. ~110 concept phrases)
+3. ~~No freshness/versioning field~~ — ✅ **Resolved, together with #6.** In-process background refresh job inside the MCP server (GitHub API discovery + re-parse + re-embed), internal-only, no public tool. Full writeup in PLAN.md Decisions Log and README.md.
+4. No fuzzy-matching for project name lookups (**next up**) — note: #1's embedding infra likely solves this too, same mechanism, different corpus (5 project names vs. ~110 concept phrases)
 5. Web chat backend cost exposure (separate risk from MCP server access)
-6. Two-service architecture — needs explicit confirmation
+6. ~~Two-service architecture~~ — ✅ **Resolved, together with #3.** Confirmed: 2 services (MCP server with refresh built in, web chat backend).
 7. Hand-rolled loop vs. MCP connector — user has reservations, not yet resolved
 
 ## Build Status
