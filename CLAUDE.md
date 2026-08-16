@@ -31,8 +31,9 @@ See PLAN.md for the full content model, MCP tool list, and stack table. Summary:
 | MCP server | Python + FastMCP, Streamable HTTP |
 | Content | Parsed from the 5+ READMEs into structured JSON; refreshed automatically by an in-process background job (daily, GitHub API discovery) |
 | Hosting | Railway |
-| Web chat backend | Under review — hand-rolled tool-use loop vs. Claude's MCP connector |
-| Access control | MCP server: fully open. Web chat backend cost exposure: unresolved (see Open Questions) |
+| Web chat backend | Hand-rolled Claude tool-use loop (`tool_choice="auto"`) — chosen deliberately over the MCP connector for the learning reps |
+| Access control | MCP server: fully open. Web chat backend: rate limited by IP + dynamic global daily cost ceiling |
+| Project-name lookup | Fuzzy matching via embeddings (same infra as concept search), "no match" fallback if below threshold |
 
 **Confirmed: 2-service architecture** — MCP server (refresh job included, internal-only) + web chat backend, same shape as Ghost-Cart's gateway/brain split.
 
@@ -40,10 +41,12 @@ See PLAN.md for the full content model, MCP tool list, and stack table. Summary:
 1. ~~Concept taxonomy~~ — ✅ **Resolved.** Hybrid: ~20 canonical labels + embedding-based auto-assignment (reuses pdf-rag's sentence-transformers pattern), with raw fallback search for novel queries. Full decision + interview story in PLAN.md Decisions Log and README.md.
 2. ~~`get_key_decisions` uneven coverage~~ — ✅ **Resolved.** Diagnosed as a content gap, not an architecture gap — all 5 repos now share an identical decision-table format directly, no parser normalization needed. Full writeup in PLAN.md Decisions Log and README.md.
 3. ~~No freshness/versioning field~~ — ✅ **Resolved, together with #6.** In-process background refresh job inside the MCP server (GitHub API discovery + re-parse + re-embed), internal-only, no public tool. Full writeup in PLAN.md Decisions Log and README.md.
-4. No fuzzy-matching for project name lookups (**next up**) — note: #1's embedding infra likely solves this too, same mechanism, different corpus (5 project names vs. ~110 concept phrases)
-5. Web chat backend cost exposure (separate risk from MCP server access)
+4. ~~No fuzzy-matching for project name lookups~~ — ✅ **Resolved.** Same embedding infra as #1, applied to project names/taglines instead of concept phrases. No match above threshold → "no matching project found," not a forced guess.
+5. ~~Web chat backend cost exposure~~ — ✅ **Resolved.** Rate limiting by IP + a global daily cost ceiling (circuit breaker). Thresholds are dynamic config, tuned post-launch.
 6. ~~Two-service architecture~~ — ✅ **Resolved, together with #3.** Confirmed: 2 services (MCP server with refresh built in, web chat backend).
-7. Hand-rolled loop vs. MCP connector — user has reservations, not yet resolved
+7. ~~Hand-rolled loop vs. MCP connector~~ — ✅ **Resolved.** Hand-rolled, chosen deliberately for the learning reps over the connector's speed-to-ship — matches this project's premise. Full reasoning in PLAN.md Decisions Log and README.md.
+
+**All 7 open questions from the 2026-08-03 architecture review are now resolved.** Next phase: implementation.
 
 ## Build Status
 No code written yet. Currently in design phase — content schema, tools, and stack are agreed; project name not yet chosen.

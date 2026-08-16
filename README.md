@@ -132,11 +132,30 @@ The refresh logic — discovering all repos via the GitHub API rather than a har
 **PM reflection**
 A new requirement doesn't automatically need a new architectural tier. Before adding a service, check whether the new capability is a live-query concern or a batch-update concern — conflating the two is how systems accumulate services that don't need to exist.
 
+### Web Chat Backend Loop: Hand-Rolled, Not the MCP Connector
+
+> *Answer to: "Tell me about a time you chose the harder technical path on purpose."*
+
+**Setup**
+The web chat backend needs something that takes a visitor's plain-English question, decides which MCP tool(s) answer it, calls them, and turns the result into prose. Two ways to build that: hand-roll the tool-calling loop as code, or use Claude's managed MCP connector (beta), where Anthropic's own API infrastructure runs that loop internally and just returns a finished answer.
+
+**The problem**
+The connector ships faster — it's a config value instead of a loop to write, test, and debug. But it's also a black box: the tool-selection and dispatch logic happens inside Anthropic's infrastructure, invisible to anyone reading the code later.
+
+**The decision**
+Hand-rolled, deliberately. This project's entire premise is learning MCP by building it, not by configuring a managed feature around it — and the hand-rolled loop is the same pattern already proven twice in this portfolio (Ghost-Cart's Restock/Nudge agents, research-synthesizer's ReAct loop), so it's reinforcement of a real skill, not new unproven ground. The managed connector would ship the feature faster, but there'd be nothing to point to as "I built this" — the interesting engineering here would belong to Anthropic's infrastructure, not this project.
+
+**Why this wasn't the "efficient" choice**
+For a team optimizing purely for time-to-ship, the connector is the better call — less code, less to maintain, less that can break. This project chose more work on purpose because the work itself is the point.
+
+**PM reflection**
+Speed-to-ship and learning value aren't always the same axis, and a real product decision sometimes means picking the slower option deliberately — as long as that tradeoff is named explicitly, not stumbled into.
+
 ---
 
 ## Roadmap
 
-- [ ] Resolve open design questions (concept taxonomy, two-service confirmation, web chat loop approach)
+- [x] Resolve open design questions (7 of 7 resolved — see Decisions & Interview Stories above)
 - [ ] Choose project name
 - [ ] Build content parser (5 READMEs → structured JSON)
 - [ ] Build MCP server + tools
