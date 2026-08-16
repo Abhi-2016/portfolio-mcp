@@ -1,4 +1,4 @@
-# [Project Name TBD] — Claude Instructions
+# Throughline — Claude Instructions
 
 ## Project
 A remote MCP server that exposes Abhishek's 5 AI portfolio projects (Circadia, AgileBot, research-synthesizer, Ghost-Cart, pdf-rag) as queryable tools, paired with a thin web chat frontend — so anyone can ask natural-language questions about the projects instead of reading 5 READMEs. See PLAN.md for full architecture and ground rules.

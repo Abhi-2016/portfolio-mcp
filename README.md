@@ -1,6 +1,6 @@
-# [Project Name TBD]
+# Throughline
 
-> Ask about Abhishek's AI projects in plain English, instead of reading 5 READMEs.
+> Ask about Abhishek's AI projects in plain English, instead of reading 5 READMEs. The name comes from what `search_concept` actually does — find the connective thread running across projects that never reference each other directly.
 
 **Status: design phase — no code written yet.** This README documents the plan as agreed so far; it will be updated as the build progresses.
 
