@@ -67,10 +67,12 @@ Surfaced during architecture review on 2026-08-03. Listed in the order we planne
 1. ~~**Concept taxonomy**~~ — ✅ **Resolved 2026-08-03.** Hybrid approach: ~20 canonical concept labels for enumerability/determinism, with embedding-based cosine similarity (reusing pdf-rag's sentence-transformers pattern) auto-assigning the ~110 source phrases into those labels instead of manual mapping. Queries that match a canonical label resolve deterministically; novel queries fall back to raw phrase-level embedding search. Full reasoning in the Decisions Log below.
 2. ~~**`get_key_decisions` uneven coverage**~~ — ✅ **Resolved 2026-08-03.** Turned out not to be an engineering problem — see Decisions Log below. All 5 source repos now share an identical decision-table format (`Decision | What | Why`); `get_key_decisions` needs uniform extraction only, no normalization logic.
 3. ~~**No freshness/versioning field in the schema**~~ — ✅ **Resolved 2026-08-03, together with #6.** In-process background refresh job inside the MCP server, no third service. Full reasoning in Decisions Log.
-4. **No fuzzy-matching or error handling for project name lookups** — tool inputs are LLM-generated, not a dropdown; a typo or paraphrase ("the sleep app" instead of "Circadia") isn't designed for yet.
-5. **Web chat backend cost exposure** — the "fully open, no auth" access decision was made for the MCP server broadly, but the MCP server itself just serves static JSON (cheap). The web chat backend calls the Claude API on every message (not cheap, unbounded if scraped or abused). These are two different risk surfaces and only one was actually assessed as low-risk.
+4. ~~**No fuzzy-matching or error handling for project name lookups**~~ — ✅ **Resolved 2026-08-03.** Reuses the Decision #1 embedding infrastructure against a different corpus (project names/taglines instead of concept phrases). Cosine-match the input against known project names; below-threshold queries return "no matching project found" rather than force-matching to the closest-but-wrong project.
+5. ~~**Web chat backend cost exposure**~~ — ✅ **Resolved 2026-08-03.** Rate limiting by IP plus a global daily cost ceiling as a circuit breaker (friendly "check back tomorrow" message, not a silent failure or unbounded spend). Thresholds left as dynamic config, to be tuned once real traffic is visible post-launch.
 6. ~~**Two-service architecture not yet explicitly confirmed**~~ — ✅ **Resolved 2026-08-03, together with #3.** Confirmed: 2 services (MCP server, web chat backend). The refresh job from #3 lives inside the MCP server as a background task, not a third service. Full reasoning in Decisions Log.
-7. **Web chat backend loop approach** — hand-rolled tool-use loop vs. Claude's managed MCP connector (beta). Provisionally hand-rolled, but the user has reservations to work through before this is final.
+7. ~~**Web chat backend loop approach**~~ — ✅ **Resolved 2026-08-03.** Hand-rolled tool-use loop, chosen deliberately over Claude's managed MCP connector for the learning reps — consistent with this project's whole premise. Full reasoning in Decisions Log.
+
+All 7 open questions from the 2026-08-03 architecture review are now resolved.
 
 ---
 
@@ -154,6 +156,40 @@ A new requirement doesn't automatically need a new architectural tier. Before ad
 - *"What happens if a source repo updates right after a refresh cycle just ran?"* → It's stale until the next cycle. Acceptable given the daily cadence against a few-times-a-week update frequency — the parameter to shrink first if that ever stopped being true.
 - *"Why not expose a 'refresh now' tool for external users?"* → Considered and rejected — same token-cost reasoning as Decision #1. Every tool in the public schema costs tokens on every single query, for a capability almost no external user would ever invoke.
 
+### Decision #4 — Fuzzy Project-Name Matching
+**Resolved:** 2026-08-03
+
+Reused the Decision #1 embedding infrastructure against a different corpus: known project names and taglines instead of concept phrases. Tool inputs are LLM-generated, not selected from a dropdown, so a query like "the sleep app" needs to resolve to "Circadia" without exact string matching. Cosine similarity against the project-name embeddings handles this with no new infrastructure. Below-threshold queries return "no matching project found" explicitly, rather than silently force-matching to whichever project happened to be closest — a wrong-but-confident answer is worse than an honest miss, especially given this project's dual-purpose bar (rule 9).
+
+### Decision #5 — Web Chat Backend Cost Exposure
+**Resolved:** 2026-08-03
+
+The MCP server serves static parsed JSON — cheap, fine to leave fully open. The web chat backend calls the Claude API on every message — not cheap, and unbounded if the page gets scraped or hit with junk queries. These are two different risk surfaces; only the first was actually assessed when "fully open" was originally decided. Fix: rate limiting by IP, plus a global daily cost ceiling as a circuit breaker — if hit, the page shows a friendly "check back tomorrow" message rather than erroring or silently continuing to spend. Thresholds are left as dynamic config rather than hardcoded, since the right numbers depend on real traffic patterns that don't exist yet — tuning happens post-launch, not now.
+
+### Decision #7 — Web Chat Backend Loop: Hand-Rolled, Not the MCP Connector
+**Resolved:** 2026-08-03
+
+> *Answer to: "Tell me about a time you chose the harder technical path on purpose."*
+
+**Setup**
+The web chat backend needs something that takes a visitor's plain-English question, decides which MCP tool(s) answer it, calls them, and turns the result into prose. Two ways to build that: hand-roll the tool-calling loop as code (`tool_choice="auto"`, dispatch, loop until Claude gives a final answer), or use Claude's managed MCP connector (beta), where Anthropic's own API infrastructure runs that loop internally and just returns a finished answer.
+
+**The problem**
+The connector ships faster — it's a config value (a server URL) instead of a loop to write, test, and debug. But it's also a black box: the tool-selection and dispatch logic happens inside Anthropic's infrastructure, invisible to the code and to anyone reading it later.
+
+**The decision**
+Hand-rolled, deliberately. This project's entire premise is learning MCP by building it, not by configuring a managed feature around it — and the hand-rolled loop is the exact same pattern already proven twice in this portfolio (Ghost-Cart's Restock/Nudge agents, research-synthesizer's ReAct loop), so it's reinforcement of a real skill, not new unproven ground. The managed connector would ship the feature faster, but there would be nothing to point to as "I built this" — the orchestration, which is the actual interesting engineering here, would belong to Anthropic's infrastructure, not to this project.
+
+**Why this wasn't the "efficient" choice**
+Being honest about it: for a team optimizing purely for time-to-ship, the connector is the better call — less code, less to maintain, less that can break in a hand-rolled loop. This project chose more work on purpose because the work itself is the point.
+
+**PM reflection**
+Speed-to-ship and learning value aren't always the same axis, and a real product decision sometimes means picking the slower option deliberately — as long as that tradeoff is named explicitly, not stumbled into. The failure mode isn't choosing the harder path; it's choosing it by accident and calling it a technical requirement.
+
+**Follow-up hooks:**
+- *"Would you make the same call for a production system with paying users?"* → No — the connector's speed and reduced maintenance surface would likely win for a team shipping under real deadline and reliability pressure. The call here is specific to this being a deliberate learning project.
+- *"What do you lose by not using the connector?"* → Faster shipping and less code to maintain. What's gained: full visibility into every tool call, and a second working example (beyond Ghost-Cart and research-synthesizer) of the same agentic loop pattern to point to in an interview.
+
 ---
 
 ## Progress Log
@@ -163,3 +199,4 @@ A new requirement doesn't automatically need a new architectural tier. Before ad
 | 2026-08-03 | Open question #1 (concept taxonomy) resolved — hybrid approach (canonical buckets + embedding-based auto-assignment). Full decision + interview story documented in Decisions Log. |
 | 2026-08-03 | Open question #2 (`get_key_decisions` uneven coverage) resolved — diagnosed as a content gap, not an architecture gap. All 5 source repos brought to an identical decision-table format directly; no parser normalization logic needed. |
 | 2026-08-03 | Open questions #3 (freshness/refresh) and #6 (service count) resolved together — in-process background refresh job inside the MCP server (GitHub API discovery + re-parse + re-embed), not a third service. Refresh is internal-only, no public tool exposes it. Architecture confirmed at 2 services. |
+| 2026-08-03 | Final 3 open questions resolved. #4: fuzzy project-name matching via the Decision #1 embedding infra. #5: rate limiting by IP + dynamic global cost ceiling for the web chat backend. #7: hand-rolled tool-use loop chosen deliberately over Claude's MCP connector, for the learning reps. All 7 open questions from the architecture review are now closed. |
