@@ -192,6 +192,52 @@ Speed-to-ship and learning value aren't always the same axis, and a real product
 
 ---
 
+## Implementation Plan
+
+### The Sequencing Principle: Risk-Retirement Order, Not Build Order
+
+The instinct most engineers have is to build bottom-up in dependency order — parser, then server, then tools, then frontend, each "finished" before the next starts. A seasoned Agentic AI PM sequences by a different question: **what's most likely to be wrong, and what does it cost to find out?**
+
+Here, that's not the parser (mechanical, low-risk) — it's whether Decision #1's embedding-based concept matching actually produces good answers. That's the entire value proposition. If `search_concept` returns garbage, nothing else matters, no matter how clean the server code is. The goal is to answer that question in days, on a small sample, not after all 5 repos are fully parsed and the whole system is built around an unvalidated assumption.
+
+This is the same instinct already present elsewhere in the portfolio: AgileBot's "JIRA only for MVP — one integration proven well beats three done poorly" and building all 5 specialist agents as stubs with defined contracts before writing logic; Ghost-Cart's caching designed before feature code. Same skill, applied here to implementation sequencing.
+
+### Phases
+
+| Phase | What | Exit Criteria |
+|---|---|---|
+| 0 | **Walking skeleton** — parse Ghost-Cart only, stand up the MCP server with 2 tools against that one project, connect a real client (Claude Desktop), verify manually | Can ask Claude Desktop about Ghost-Cart's architecture decisions and get a correct answer, end-to-end |
+| 1 | **Retire the biggest risk** — test Decision #1's embedding approach on 2 projects (Ghost-Cart + Circadia); review borderline bucket assignments; check `search_concept` returns sensible cross-project results | Concept matching is validated on a small sample before scaling |
+| 2 | **Scale breadth** — parse the remaining 3 repos, build out all 5 tools fully, add fuzzy project-name matching (Decision #4) | All 5 tools work against all 5 projects |
+| 3 | **Tool-level evals** (ground rule 5a) — `search_concept` precision/recall against hand-labeled expected matches | Eval suite exists and passes a defined threshold |
+| 4 | **Web chat backend, its own steel thread** — hand-rolled loop (Decision #7) against the now-proven MCP server, one simple query type first | One realistic question answered correctly end-to-end via the web chat path |
+| 5 | **Conversational evals** (ground rule 5b) — realistic recruiter-style questions, checked for correctness and no hallucination | Eval suite exists and passes a defined threshold |
+| 6 | **Cost/rate protections** (Decision #5) — rate limiting + cost ceiling, tuned against real usage | Deliberately after Phase 4, not before — thresholds need real traffic data |
+| 7 | **Refresh job** (Decision #3) — in-process background refresh, GitHub API discovery | Deliberately last — automating updates to a system only makes sense once that system reliably works |
+| 8 | **Deploy to Railway** | Requires explicit approval each time per ground rule 14, regardless of sequence position |
+
+**Current phase: 0 (walking skeleton) — in progress.**
+
+---
+
+## Concepts Practised
+
+| Category | Concept | Where Practised |
+|---|---|---|
+| Agentic AI | Concept taxonomy: fixed vocabulary vs. embedding-based matching | Decision #1 |
+| Agentic AI | Cosine similarity for semantic matching | Decision #1 |
+| Agentic AI | Reuse over reinvention — same embedding pattern applied across taxonomy, project-name matching, and cross-project search | Decisions #1, #4 |
+| AI PM | Sizing manual labor before choosing an engineering solution | Decision #1 |
+| AI PM | Diagnosing a content gap vs. an architecture gap before building automation | Decision #2 |
+| AI PM | Separating live-query services from batch-update jobs when scoping infrastructure | Decision #3, #6 |
+| AI PM | Cost exposure as two distinct risk surfaces, not one | Decision #5 |
+| AI PM | Choosing the harder technical path deliberately, and naming the tradeoff explicitly | Decision #7 |
+| Classic PM | Risk-retirement sequencing over build-order sequencing | Implementation Plan |
+| Classic PM | Walking skeleton / steel thread before building breadth | Implementation Plan |
+| Classic PM | Deferring operational concerns (rate limiting, refresh) until there's a stable system worth protecting | Implementation Plan, Decisions #3, #5 |
+
+---
+
 ## Progress Log
 | Date | Milestone |
 |---|---|
@@ -200,3 +246,4 @@ Speed-to-ship and learning value aren't always the same axis, and a real product
 | 2026-08-03 | Open question #2 (`get_key_decisions` uneven coverage) resolved — diagnosed as a content gap, not an architecture gap. All 5 source repos brought to an identical decision-table format directly; no parser normalization logic needed. |
 | 2026-08-03 | Open questions #3 (freshness/refresh) and #6 (service count) resolved together — in-process background refresh job inside the MCP server (GitHub API discovery + re-parse + re-embed), not a third service. Refresh is internal-only, no public tool exposes it. Architecture confirmed at 2 services. |
 | 2026-08-03 | Final 3 open questions resolved. #4: fuzzy project-name matching via the Decision #1 embedding infra. #5: rate limiting by IP + dynamic global cost ceiling for the web chat backend. #7: hand-rolled tool-use loop chosen deliberately over Claude's MCP connector, for the learning reps. All 7 open questions from the architecture review are now closed. |
+| 2026-08-03 | Project named Throughline. Implementation plan defined: 9 phases (0–8) sequenced by risk-retirement order rather than build order, starting with a walking skeleton (Ghost-Cart only, 2 tools, manual verification via Claude Desktop). Phase 0 started on branch `phase-0/walking-skeleton`. |

@@ -151,17 +151,33 @@ For a team optimizing purely for time-to-ship, the connector is the better call 
 **PM reflection**
 Speed-to-ship and learning value aren't always the same axis, and a real product decision sometimes means picking the slower option deliberately — as long as that tradeoff is named explicitly, not stumbled into.
 
+### Implementation Sequencing: Risk-Retirement Order, Not Build Order
+
+> *Answer to: "How do you approach implementation planning as an AI PM?"*
+
+The instinct most engineers have is to build bottom-up in dependency order — parser, then server, then tools, then frontend, each "finished" before the next starts. A different question drives the actual sequencing here: what's most likely to be wrong, and what does it cost to find out?
+
+The riskiest unknown in this project isn't the parser (mechanical, low-risk) — it's whether the embedding-based concept matching from the taxonomy decision above actually produces good answers. That's the entire value proposition. If cross-project search returns garbage, nothing else matters, no matter how clean the server code is. The plan tests that on 2 projects before scaling to all 5, rather than building the full system first and finding out at the end.
+
+Concretely: a walking skeleton first (one project, two tools, manually verified through a real MCP client) proves the architecture holds together before any breadth gets built. Evals get designed alongside each phase, not bolted on after. Operational concerns — rate limiting, the refresh job — come last, deliberately, since automating protection for a system that doesn't reliably work yet is solving the wrong problem first.
+
 ---
 
 ## Roadmap
 
+Sequenced by risk-retirement order — see the interview story above for why.
+
 - [x] Resolve open design questions (7 of 7 resolved — see Decisions & Interview Stories above)
-- [ ] Choose project name
-- [ ] Build content parser (5 READMEs → structured JSON)
-- [ ] Build MCP server + tools
-- [ ] Build web chat backend + frontend
-- [ ] Deploy to Railway
-- [ ] Eval suite: tool-level + end-to-end conversational
+- [x] Choose project name — **Throughline**
+- [ ] Phase 0 — Walking skeleton: parse Ghost-Cart only, 2 tools, verify via Claude Desktop *(in progress)*
+- [ ] Phase 1 — Validate embedding-based concept matching on 2 projects before scaling
+- [ ] Phase 2 — Scale to all 5 projects, all 5 tools, fuzzy project-name matching
+- [ ] Phase 3 — Tool-level evals
+- [ ] Phase 4 — Web chat backend (hand-rolled tool-use loop), its own steel thread
+- [ ] Phase 5 — Conversational evals
+- [ ] Phase 6 — Rate limiting + cost ceiling, tuned against real usage
+- [ ] Phase 7 — Refresh job (in-process, GitHub API discovery)
+- [ ] Phase 8 — Deploy to Railway
 
 ---
 
