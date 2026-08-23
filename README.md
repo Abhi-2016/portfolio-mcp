@@ -33,7 +33,7 @@ Technical visitor                    Everyone else
         ▼                                ▼
 ┌─────────────────┐            ┌──────────────────────┐
 │   MCP Server      │◄──────────│  Web Chat Backend      │
-│   (FastMCP,        │  tool     │  Claude API +          │
+│   (TypeScript,     │  tool     │  Claude API +          │
 │   Streamable HTTP)  │  calls    │  tool-use loop         │
 └─────────────────┘            └──────────────────────┘
         │
@@ -51,7 +51,8 @@ Two separate deployables — same shape as Ghost-Cart's gateway/brain split.
 
 | Layer | Choice |
 |---|---|
-| MCP server | Python + FastMCP |
+| MCP server | TypeScript + official MCP SDK |
+| Embeddings | Transformers.js (`@xenova/transformers`), `all-MiniLM-L6-v2` |
 | Transport | Streamable HTTP |
 | Content | Parsed once from the 5 project READMEs into structured JSON |
 | Hosting | Railway |
@@ -93,6 +94,8 @@ Hybrid wasn't treated as a strictly-better answer. It's more code than either pu
 
 **PM reflection**
 When two options have complementary failure modes, the question isn't "which one do I pick" — it's whether combining them costs less than the failure mode you're avoiding. Here it did, mostly because the embedding infrastructure was already built and understood from a prior project ([pdf-rag](https://github.com/Abhi-2016/pdf-rag)), which is what made the hybrid's added cost small enough to be worth it.
+
+*Update: the stack later moved from Python to TypeScript (story below), which breaks the "already built from pdf-rag" part of this reasoning — `sentence-transformers` is Python-only. The technique survived the switch; the specific reuse claim didn't.*
 
 ### `get_key_decisions` Coverage: Content Gap, Not an Architecture Gap
 
@@ -160,6 +163,25 @@ The instinct most engineers have is to build bottom-up in dependency order — p
 The riskiest unknown in this project isn't the parser (mechanical, low-risk) — it's whether the embedding-based concept matching from the taxonomy decision above actually produces good answers. That's the entire value proposition. If cross-project search returns garbage, nothing else matters, no matter how clean the server code is. The plan tests that on 2 projects before scaling to all 5, rather than building the full system first and finding out at the end.
 
 Concretely: a walking skeleton first (one project, two tools, manually verified through a real MCP client) proves the architecture holds together before any breadth gets built. Evals get designed alongside each phase, not bolted on after. Operational concerns — rate limiting, the refresh job — come last, deliberately, since automating protection for a system that doesn't reliably work yet is solving the wrong problem first.
+
+### Language Switch: TypeScript/JavaScript, Not Python
+
+> *Answer to: "Tell me about a time you changed direction mid-project, and how you handled the fallout."*
+
+**Setup**
+The stack was originally set to Python, chosen to reuse existing fluency across 4 of the other 5 portfolio projects.
+
+**The problem**
+A simple question — "is Python the standard for AI code?" — surfaced that the original stack rationale was narrower than it sounded. Python dominates model training and research, but application-layer AI work (agents, tool-calling backends) is genuinely split with TypeScript/JavaScript, and MCP itself ships official SDKs in both languages. "Python because it's the AI standard" wasn't quite accurate — the real reason was skill reuse, a narrower and more honest justification than the one initially given.
+
+**The decision**
+Switched the MCP server and web chat backend to TypeScript. This directly breaks part of the concept-taxonomy decision's stated reasoning above: the hybrid approach was justified as "close to free" partly because the embedding infrastructure was already built and understood from a Python project. That specific reuse claim no longer holds.
+
+**Handling the fallout**
+Rather than abandon local embeddings for an API-based service (a bigger tradeoff — network latency and per-query cost, not just an implementation detail), the fix is Transformers.js, a JS port capable of running the same embedding model locally. Same technique, same model, new library. The core reasoning survives; only the specific claim of "already built" doesn't.
+
+**PM reflection**
+A decision's rationale is only as strong as its weakest premise. When an underlying assumption changes, the discipline is re-examining what that decision's reasoning actually depended on — not just updating the stack table and moving on.
 
 ---
 
