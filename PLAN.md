@@ -53,10 +53,11 @@ Kept deliberately small — research-synthesizer's own Week 5 finding (3 tools �
 
 | Layer | Choice | Rationale |
 |---|---|---|
-| MCP server | Python + FastMCP | Reuses existing Python fluency (pdf-rag, research-synthesizer, AgileBot, Ghost-Cart's `brain`) — no new language |
+| MCP server | TypeScript + official MCP SDK | Switched from Python (Decision #8) — application-layer AI work isn't uniquely a Python domain, and MCP has full official TypeScript support |
 | Transport | Streamable HTTP | Current standard for remote MCP servers (replaces SSE-only) |
 | Content ingestion | Parser → structured JSON, re-run automatically by an in-process background job inside the MCP server (daily) | Avoids fragile live markdown parsing on every query; refresh job also discovers new repos via the GitHub API rather than a hardcoded list of 5 — see Decision #3 |
-| Hosting | Railway | One-click FastMCP deploy template exists; reuses account/deployment experience from Ghost-Cart |
+| Hosting | Railway | Node/TypeScript is a first-class Railway target; reuses account/deployment experience from Ghost-Cart's gateway service, which is also Node.js |
+| Embeddings | Transformers.js (`@xenova/transformers`), `all-MiniLM-L6-v2` | Decision #8 — same technique and model as pdf-rag's `sentence-transformers`, JS-native library instead |
 | Service count | 2 — MCP server (refresh job included) + web chat backend | Confirmed in Decision #3 — the refresh job is a batch-update concern, not a live-query concern, so it doesn't need to be a third service |
 | Web chat backend | Hand-rolled Claude tool-use loop (`tool_choice="auto"`) — **flagged for reconsideration, see open questions below** | Was chosen to reuse the agentic-loop pattern already built in Ghost-Cart's Restock/Nudge agents and research-synthesizer's ReAct loop, rather than the managed MCP connector (beta) |
 | Access control | Fully open, no auth | Content isn't sensitive; simplest to ship |
@@ -64,7 +65,7 @@ Kept deliberately small — research-synthesizer's own Week 5 finding (3 tools �
 ### Open Questions
 Surfaced during architecture review on 2026-08-03. Listed in the order we planned to work through them.
 
-1. ~~**Concept taxonomy**~~ — ✅ **Resolved 2026-08-03.** Hybrid approach: ~20 canonical concept labels for enumerability/determinism, with embedding-based cosine similarity (reusing pdf-rag's sentence-transformers pattern) auto-assigning the ~110 source phrases into those labels instead of manual mapping. Queries that match a canonical label resolve deterministically; novel queries fall back to raw phrase-level embedding search. Full reasoning in the Decisions Log below.
+1. ~~**Concept taxonomy**~~ — ✅ **Resolved 2026-08-03.** Hybrid approach: ~20 canonical concept labels for enumerability/determinism, with embedding-based cosine similarity (same technique as pdf-rag's `sentence-transformers`, now via Transformers.js — see Decision #8) auto-assigning the ~110 source phrases into those labels instead of manual mapping. Queries that match a canonical label resolve deterministically; novel queries fall back to raw phrase-level embedding search. Full reasoning in the Decisions Log below.
 2. ~~**`get_key_decisions` uneven coverage**~~ — ✅ **Resolved 2026-08-03.** Turned out not to be an engineering problem — see Decisions Log below. All 5 source repos now share an identical decision-table format (`Decision | What | Why`); `get_key_decisions` needs uniform extraction only, no normalization logic.
 3. ~~**No freshness/versioning field in the schema**~~ — ✅ **Resolved 2026-08-03, together with #6.** In-process background refresh job inside the MCP server, no third service. Full reasoning in Decisions Log.
 4. ~~**No fuzzy-matching or error handling for project name lookups**~~ — ✅ **Resolved 2026-08-03.** Reuses the Decision #1 embedding infrastructure against a different corpus (project names/taglines instead of concept phrases). Cosine-match the input against known project names; below-threshold queries return "no matching project found" rather than force-matching to the closest-but-wrong project.
@@ -102,6 +103,8 @@ When two options have complementary failure modes, the question isn't "which one
 - *"Why not just use the fixed vocabulary from the start?"* → Sized the manual-mapping cost first (110 phrases) — it doesn't scale, and the embedding pattern was already built and understood from pdf-rag, so automating the mapping was close to free.
 - *"How do you know the auto-assigned buckets are actually correct?"* → Open item — this decision hasn't been eval'd yet, only designed. Next step is defining what "correct bucket assignment" means well enough to test it.
 
+**Update 2026-08-03:** the stack later moved from Python to TypeScript (Decision #8), which breaks the "already built and understood from pdf-rag" part of this reasoning — `sentence-transformers` is a Python library. See Decision #8 for how this was handled.
+
 ### Decision #2 — `get_key_decisions` Coverage: Content Gap, Not an Architecture Gap
 **Resolved:** 2026-08-03
 
@@ -128,6 +131,30 @@ Not every inconsistency needs an engineering solution. Before reaching for a par
 **Follow-up hooks:**
 - *"Why not have Claude generate the missing decision tables from the project code?"* → Considered and rejected, same reasoning as Decision #1's authenticity line — this portfolio represents someone's own thinking, and auto-generating "why I made this choice" content blurs whose reasoning it actually is.
 - *"Doesn't this mean the design work on this tool was wasted?"* → No — the review is what revealed it was a content gap, not an architecture gap. Skipping the review and building a normalization parser first would have been the wasted work.
+
+### Decision #8 — Language Switch: TypeScript/JavaScript, Not Python
+**Resolved:** 2026-08-03
+
+> *Answer to: "Tell me about a time you changed direction mid-project, and how you handled the fallout."*
+
+**Setup**
+The stack was originally set to Python + FastMCP, chosen to reuse existing fluency across 4 of the other 5 portfolio projects (pdf-rag, research-synthesizer, AgileBot, Ghost-Cart's `brain` service).
+
+**The problem**
+A simple question — "is Python the standard for AI code?" — surfaced that the original stack rationale was narrower than it sounded. Python dominates model training and research, but application-layer AI work (agents, tool-calling backends) is genuinely split with TypeScript/JavaScript, and MCP itself ships official SDKs in both languages. "Python because it's the AI standard" wasn't quite accurate — the real reason was skill reuse, a narrower and more honest justification than the one initially given.
+
+**The decision**
+Switched the MCP server and web chat backend to TypeScript, using the official TypeScript MCP SDK. This directly breaks part of Decision #1's stated reasoning: the hybrid taxonomy approach was justified as "close to free" partly because the embedding infrastructure (`sentence-transformers`) was already built and understood from pdf-rag — a Python library. That specific reuse claim no longer holds.
+
+**Handling the fallout**
+Rather than abandon local embeddings for an API-based service (a bigger tradeoff — network latency and per-query cost, not just an implementation detail), the fix is Transformers.js (`@xenova/transformers`) — a JS port capable of running the same `all-MiniLM-L6-v2` model locally. Same technique, same model, new library. The core reasoning in Decision #1 (local embeddings, cosine similarity, no per-query cost) survives; only the specific claim of "already built" from pdf-rag doesn't.
+
+**PM reflection**
+A decision's rationale is only as strong as its weakest premise. Decision #1's "why this wasn't free" section leaned on skill reuse as part of the justification for taking on hybrid complexity — when the underlying stack choice changed, that specific premise needed re-examining, not just the stack table. Catching that connection mattered more than the language switch itself.
+
+**Follow-up hooks:**
+- *"Why not just keep Python once you'd already designed everything around it?"* → The stack was a means to an end (learning + reuse), not a constraint. Once "Python is the AI standard" turned out to be a partial myth, there was no reason to stay locked in beyond sunk cost.
+- *"Doesn't switching languages mid-design undercut the earlier decisions?"* → Only the parts that specifically depended on the old language. Decisions #2 through #7 don't reference Python anywhere in their reasoning — only Decision #1's justification needed amending.
 
 ### Decision #3 — Freshness & Service Count: In-Process Background Refresh, Not a Third Service
 **Resolved:** 2026-08-03 (open questions #3 and #6 resolved together)
@@ -235,6 +262,8 @@ This is the same instinct already present elsewhere in the portfolio: AgileBot's
 | Classic PM | Risk-retirement sequencing over build-order sequencing | Implementation Plan |
 | Classic PM | Walking skeleton / steel thread before building breadth | Implementation Plan |
 | Classic PM | Deferring operational concerns (rate limiting, refresh) until there's a stable system worth protecting | Implementation Plan, Decisions #3, #5 |
+| AI PM | Distinguishing "Python is the AI standard" (partly a myth) from "Python is the right choice for a specific reason" (skill reuse) | Decision #8 |
+| Classic PM | Re-examining a prior decision's stated reasoning when an underlying assumption changes, rather than only updating the surface-level choice | Decision #8 |
 
 ---
 
@@ -247,3 +276,4 @@ This is the same instinct already present elsewhere in the portfolio: AgileBot's
 | 2026-08-03 | Open questions #3 (freshness/refresh) and #6 (service count) resolved together — in-process background refresh job inside the MCP server (GitHub API discovery + re-parse + re-embed), not a third service. Refresh is internal-only, no public tool exposes it. Architecture confirmed at 2 services. |
 | 2026-08-03 | Final 3 open questions resolved. #4: fuzzy project-name matching via the Decision #1 embedding infra. #5: rate limiting by IP + dynamic global cost ceiling for the web chat backend. #7: hand-rolled tool-use loop chosen deliberately over Claude's MCP connector, for the learning reps. All 7 open questions from the architecture review are now closed. |
 | 2026-08-03 | Project named Throughline. Implementation plan defined: 9 phases (0–8) sequenced by risk-retirement order rather than build order, starting with a walking skeleton (Ghost-Cart only, 2 tools, manual verification via Claude Desktop). Phase 0 started on branch `phase-0/walking-skeleton`. |
+| 2026-08-03 | Stack switched from Python to TypeScript/JavaScript (Decision #8), triggered by re-examining whether "Python is the AI standard" actually held up. MCP server and web chat backend both move to TypeScript; embeddings move from `sentence-transformers` to Transformers.js (same technique, same model). Decision #1's reasoning amended to reflect the change. New branch `phase-0/ghost-cart-walking-skeleton` created for the actual Phase 0 build. |
