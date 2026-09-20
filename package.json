@@ -1,0 +1,20 @@
+{
+  "name": "throughline",
+  "version": "0.1.0",
+  "description": "MCP server exposing Abhishek's AI portfolio projects as queryable tools",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "parse": "tsx src/parser/parse-ghost-cart.ts",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

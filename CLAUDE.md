@@ -50,7 +50,15 @@ See PLAN.md for the full content model, MCP tool list, and stack table. Summary:
 **All 7 open questions from the 2026-08-03 architecture review are now resolved.** Next phase: implementation. Stack later switched from Python to TypeScript/JavaScript (Decision #8) — see PLAN.md Decisions Log for full reasoning.
 
 ## Build Status
-Design phase complete — all 7 open questions resolved, project named Throughline. Implementation started: **Phase 0 (walking skeleton) in progress**, on branch `phase-0/walking-skeleton`.
+Design phase complete — all 7 open questions resolved, project named Throughline. Implementation started: **Phase 0 (walking skeleton) in progress**, on branch `phase-0/ghost-cart-walking-skeleton`.
+
+**Phase 0 checkpoints:**
+| Step | Status |
+|---|---|
+| TypeScript project scaffolding (`package.json`, `tsconfig.json`, folder layout) | ✅ Done |
+| Ghost-Cart parser (README/CLAUDE.md → structured JSON) | 🔜 Next |
+| Minimal MCP server (2 tools, Streamable HTTP) | 🔜 Pending |
+| Manual verification via Claude Desktop | 🔜 Pending |
 
 ## Implementation Plan
 Full 9-phase plan (0–8) in PLAN.md, sequenced by **risk-retirement order, not build order** — the riskiest unknown (does Decision #1's embedding-based concept matching actually work?) gets tested on a small sample before scaling to all 5 repos, rather than building the full system first and finding out at the end. Phase 0: parse Ghost-Cart only, 2 tools, verify manually via Claude Desktop. Phase 1: validate the embedding approach on 2 projects before Phase 2 scales to all 5.
