@@ -164,6 +164,25 @@ The riskiest unknown in this project isn't the parser (mechanical, low-risk) —
 
 Concretely: a walking skeleton first (one project, two tools, manually verified through a real MCP client) proves the architecture holds together before any breadth gets built. Evals get designed alongside each phase, not bolted on after. Operational concerns — rate limiting, the refresh job — come last, deliberately, since automating protection for a system that doesn't reliably work yet is solving the wrong problem first.
 
+### Tool Selection Ambiguity: MCP vs. Filesystem Access
+
+> *Answer to: "Tell me about a time your test passed for the wrong reason."*
+
+**Setup**
+After Phase 0's MCP server was built and registered with Claude Code, the first end-to-end verification appeared to succeed — asking about Ghost-Cart's caching decision returned the correct answer.
+
+**The problem**
+The transcript's tool-use summary showed a file search and read, not an MCP tool invocation. Claude had read the underlying data file directly via its own general-purpose file tools instead of calling the registered tool. The answer was correct, but for the wrong reason — it proved the data file was accurate (already verified independently), not that the MCP server or the tool-call plumbing worked at all, which was the one thing this test actually needed to prove.
+
+**The diagnosis**
+Two separate things were tangled together. One was a mechanical bug — the server had been registered scoped to the wrong project directory, so it wasn't even visible to a fresh session at first. The other, more interesting one: Claude Code has broad filesystem access to the exact directory the MCP data lives in, so a tool call and a direct file read led to the same information. Forcing an explicit instruction to call the tool directly produced a genuinely different, verifiable tool invocation in the transcript.
+
+**The broader principle**
+Whether a model reaches for a registered tool or just reads a file isn't random — it depends on whether a *competing path* to the same data exists in that specific environment. A dev tool with full filesystem access has that competing path. The actual audience for this server — a recruiter on a web chat page, or a client connected to the remote server — has no filesystem access to the source machine at all, so there's no competing path for them to take. The ambiguity is an artifact of testing through a dev tool, not a property of the server itself, and it structurally cannot occur for real end users.
+
+**PM reflection**
+A correct-looking answer doesn't prove the mechanism worked — verification needs to check *how* an answer was produced, not just *what* it says. A testing environment with more access than the real audience will surface problems that don't actually exist for real users.
+
 ### Language Switch: TypeScript/JavaScript, Not Python
 
 > *Answer to: "Tell me about a time you changed direction mid-project, and how you handled the fallout."*

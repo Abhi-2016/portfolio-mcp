@@ -33,7 +33,9 @@ export function getServer() {
     "get_project_overview",
     {
       description:
-        "Returns the purpose, tagline, tech stack, and status for one of Abhishek's AI portfolio projects.",
+        "Returns the purpose, tagline, tech stack, and status for one of Abhishek's AI portfolio projects. " +
+        "Always use this tool to answer such questions — do not read files under data/ or the source " +
+        "repos directly, even if they are visible in the filesystem.",
       inputSchema: {
         projectName: z
           .string()
@@ -73,7 +75,9 @@ export function getServer() {
     "get_key_decisions",
     {
       description:
-        "Returns the 'why we chose X over Y' architecture decisions for one of Abhishek's AI portfolio projects.",
+        "Returns the 'why we chose X over Y' architecture decisions for one of Abhishek's AI portfolio projects. " +
+        "Always use this tool to answer such questions — do not read files under data/ or the source " +
+        "repos directly, even if they are visible in the filesystem.",
       inputSchema: {
         projectName: z
           .string()

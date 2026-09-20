@@ -156,6 +156,37 @@ A decision's rationale is only as strong as its weakest premise. Decision #1's "
 - *"Why not just keep Python once you'd already designed everything around it?"* → The stack was a means to an end (learning + reuse), not a constraint. Once "Python is the AI standard" turned out to be a partial myth, there was no reason to stay locked in beyond sunk cost.
 - *"Doesn't switching languages mid-design undercut the earlier decisions?"* → Only the parts that specifically depended on the old language. Decisions #2 through #7 don't reference Python anywhere in their reasoning — only Decision #1's justification needed amending.
 
+### Decision #9 — Tool Selection Ambiguity: MCP vs. Filesystem Access
+**Resolved:** 2026-09-20
+
+> *Answer to: "Tell me about a time your test passed for the wrong reason."*
+
+**Setup**
+After Phase 0's MCP server and stdio transport were built and registered with Claude Code, the first end-to-end verification appeared to succeed — asking about Ghost-Cart's caching decision returned the correct answer.
+
+**The problem**
+The transcript's tool-use summary read "Searched for 2 patterns, read 2 files" — not an MCP tool invocation. Claude had read `data/ghost-cart.json` directly via its own general-purpose file tools instead of calling the registered `get_key_decisions` tool. The answer was correct, but for the wrong reason: it proved the underlying JSON was accurate (already verified independently when the parser ran), not that the MCP server or the tool-call plumbing worked at all — the one thing Phase 0 actually needed to prove.
+
+**The diagnosis had two separate parts, not one**
+First, a mechanical bug: the server had been registered with `-s local` scope while this session's working directory was a different folder than where the user's terminal actually launched from — so the first restart attempt didn't even show `throughline` as available. Re-registered with `-s user` scope (available regardless of directory) fixed that.
+
+Second, once actually connected, the real ambiguity: Claude Code has broad filesystem access to the exact directory the MCP data lives in, so a tool call and a direct file read led to the same information. Forcing an explicit instruction ("call the tool directly, don't read files") produced a genuine "Called throughline" / "Called get_key_decisions against the Throughline MCP server" invocation — verifiably different from the earlier file-read shortcut.
+
+**The broader principle this surfaced**
+Whether Claude reaches for the MCP tool or filesystem access isn't random — it's determined by whether a *competing path* to the same data exists in that specific client's environment. Claude Code, as a dev tool with full repo access, has that competing path. The actual target audience — a recruiter on the web chat page, or Claude Desktop connected to the remote Railway server — has no filesystem access to this machine at all, so there is no competing path for them to take. This ambiguity is an artifact of testing through a dev tool, not a property of the MCP server, and structurally cannot occur for real end users.
+
+A related, second distinction surfaced alongside this: a request like "pull in AgileBot's CLAUDE.md to pick up where we left off" is correctly answered via filesystem access, even once AgileBot is parsed into Throughline — that request wants the full raw file for session continuity on the user's own development work, which is a different job than Throughline's curated portfolio Q&A. Recognizing whether a request is Throughline-shaped at all is part of correct tool selection, separate from whether Claude is taking a lazy shortcut on a question that *is* Throughline-shaped.
+
+**The fix**
+Hardening both tool descriptions to explicitly discourage bypassing them when a Throughline-shaped question is being asked (see the tool-hardening work that follows this decision). Honestly scoped: this is advisory, not enforced by the protocol — MCP has no mechanism to force a client to prefer a tool over its own unrelated capabilities. It reduces the problem in the one environment where the ambiguity can occur; it doesn't eliminate the possibility a model ignores it.
+
+**PM reflection**
+A correct-looking answer doesn't prove the mechanism worked — verification needs to check *how* an answer was produced, not just *what* it says. And tool ambiguity isn't uniform across environments: a testing environment with broader access than the real audience will surface problems that don't exist for actual users, while also requiring genuine judgment about which requests are in-scope for the tool at all, independent of that ambiguity.
+
+**Follow-up hooks:**
+- *"How do you know this won't happen for real users?"* → The real deployment paths (web chat backend, remote MCP connector) have no filesystem access to the source repos at all — there's no competing path to take, structurally, not just by convention.
+- *"Isn't 'always use this tool' in the description a fragile fix?"* → Yes, and worth naming honestly — it's advisory, not enforced. It's the correct idiomatic mitigation available at the protocol level, not a guarantee.
+
 ### Decision #3 — Freshness & Service Count: In-Process Background Refresh, Not a Third Service
 **Resolved:** 2026-08-03 (open questions #3 and #6 resolved together)
 
