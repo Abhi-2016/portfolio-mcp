@@ -191,7 +191,7 @@ Sequenced by risk-retirement order — see the interview story above for why.
 
 - [x] Resolve open design questions (7 of 7 resolved — see Decisions & Interview Stories above)
 - [x] Choose project name — **Throughline**
-- [ ] Phase 0 — Walking skeleton: parse Ghost-Cart only, 2 tools, verify via Claude Desktop *(in progress)*
+- [x] Phase 0 — Walking skeleton: parse Ghost-Cart only, 2 tools, verified end-to-end via a real MCP client (Claude Code, stdio transport)
 - [ ] Phase 1 — Validate embedding-based concept matching on 2 projects before scaling
 - [ ] Phase 2 — Scale to all 5 projects, all 5 tools, fuzzy project-name matching
 - [ ] Phase 3 — Tool-level evals

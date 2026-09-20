@@ -52,13 +52,16 @@ See PLAN.md for the full content model, MCP tool list, and stack table. Summary:
 ## Build Status
 Design phase complete — all 7 open questions resolved, project named Throughline. Implementation started: **Phase 0 (walking skeleton) in progress**, on branch `phase-0/ghost-cart-walking-skeleton`.
 
-**Phase 0 checkpoints:**
+**Phase 0 checkpoints — all complete:**
 | Step | Status |
 |---|---|
 | TypeScript project scaffolding (`package.json`, `tsconfig.json`, folder layout) | ✅ Done |
-| Ghost-Cart parser (README/CLAUDE.md → structured JSON) | 🔜 Next |
-| Minimal MCP server (2 tools, Streamable HTTP) | 🔜 Pending |
-| Manual verification via Claude Desktop | 🔜 Pending |
+| Ghost-Cart parser (README/CLAUDE.md → structured JSON) | ✅ Done — `src/parser/` |
+| Minimal MCP server (2 tools, Streamable HTTP) | ✅ Done — `src/server/index.ts` + shared `src/server/server.ts`, verified via curl |
+| Stdio transport entry point | ✅ Done — `src/server/stdio.ts`, registered with Claude Code via `claude mcp add -s user` |
+| Manual verification via a real MCP client | ✅ Done — Claude Code (fresh terminal session) called `get_key_decisions` through the `throughline` connector and returned all 20 real Ghost-Cart architecture decisions. Confirmed genuine (not a file-read shortcut) by the transcript's explicit "Called throughline" / "Called get_key_decisions against the Throughline MCP server" tool-use line. |
+
+**Phase 0 complete.** Next: Phase 1 — validate the embedding-based concept matching (Decision #1) on 2 projects before scaling to all 5.
 
 ## Implementation Plan
 Full 9-phase plan (0–8) in PLAN.md, sequenced by **risk-retirement order, not build order** — the riskiest unknown (does Decision #1's embedding-based concept matching actually work?) gets tested on a small sample before scaling to all 5 repos, rather than building the full system first and finding out at the end. Phase 0: parse Ghost-Cart only, 2 tools, verify manually via Claude Desktop. Phase 1: validate the embedding approach on 2 projects before Phase 2 scales to all 5.

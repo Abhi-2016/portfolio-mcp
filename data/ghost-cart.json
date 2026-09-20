@@ -1,0 +1,345 @@
+{
+  "name": "Ghost-Cart",
+  "tagline": "**Location-aware AI shopping assistant** — Claude autonomously decides what to restock, when to nudge you to go shopping, and what to say. Built on a Node.js gateway + Python FastAPI brain + React Native app.",
+  "status": "Live in production",
+  "techStack": [
+    {
+      "layer": "Mobile",
+      "technology": "React Native, Expo SDK 54, Expo Router, Zustand, AsyncStorage"
+    },
+    {
+      "layer": "Gateway",
+      "technology": "Node.js 20+, Express 4, Zod, node-cache, Helmet, Axios"
+    },
+    {
+      "layer": "Brain",
+      "technology": "Python 3.11+, FastAPI, Uvicorn, Pydantic, cachetools, Anthropic SDK"
+    },
+    {
+      "layer": "AI Model",
+      "technology": "Claude Sonnet 4.6 (`claude-sonnet-4-6`)"
+    },
+    {
+      "layer": "Location",
+      "technology": "Expo Location, Google Places Nearby Search API"
+    },
+    {
+      "layer": "Notifications",
+      "technology": "expo-notifications (local push)"
+    }
+  ],
+  "architecture": {
+    "overview": "Ghost-Cart is a grocery assistant that goes beyond a simple list app — it actively reasons about your shopping needs using Claude AI.\n\n| Capability | How it works |\n|---|---|\n| **Chat to build your list** | Type naturally (\"high-protein breakfast\") — Claude suggests items and adds them |\n| **Smart store filtering** | Walk into a store and the list automatically hides items that store doesn't carry |\n| **Restock Agent** | Claude scans your purchase history and autonomously decides what to add back |\n| **Nudge Agent** | After 12h in the background, Claude decides whether to send a push notification and writes the copy itself |\n| **GPS store detection** | Polls every 30s; detects when you enter a known store and triggers agents automatically |\n\nThe two **agentic** features (Restock + Nudge) use `tool_choice=\"auto\"` with a while-loop — Claude runs freely until it decides it's done, with no hard-coded rules or thresholds.\n\n---\n\n---",
+    "keyDecisions": [
+      {
+        "decision": "**Service split**",
+        "what": "Three separate services: Node.js gateway, Python brain, React Native mobile — not a monolith",
+        "why": "Isolates concerns; each service has a single job. Gateway handles I/O and validation, brain handles AI, mobile handles UX. Independent deployable units."
+      },
+      {
+        "decision": "**Brain is not publicly routable**",
+        "what": "Brain accepts requests only from the gateway via an internal network; it has no public URL that works without the secret header",
+        "why": "`ANTHROPIC_API_KEY` never leaves the brain process. Even if the gateway is fully compromised, the AI key cannot be extracted."
+      },
+      {
+        "decision": "**Gateway-to-brain auth**",
+        "what": "`X-Internal-Secret` shared header, not JWT or OAuth",
+        "why": "Simple, stateless, no token expiry to manage. The only consumer of the brain is the gateway — a lightweight secret is the right tool for a trusted internal channel."
+      },
+      {
+        "decision": "**Hybrid language stack**",
+        "what": "Node.js for gateway, Python for brain",
+        "why": "Node.js handles high-throughput async I/O well; Python has the best AI/ML ecosystem. Using the right language per job outweighs the overhead of a polyglot stack."
+      },
+      {
+        "decision": "**AI framework**",
+        "what": "Direct Anthropic Python SDK (`anthropic.AsyncAnthropic`) — no LangChain or wrapper",
+        "why": "LangChain adds ~150 MB of abstraction designed for multi-model chains and RAG pipelines. Ghost-Cart calls a single Claude endpoint; the direct SDK is leaner, typed, and easier to debug."
+      },
+      {
+        "decision": "**Agentic loop mechanism**",
+        "what": "`tool_choice=\"auto\"` with a `while` loop for Restock and Nudge agents",
+        "why": "Gives Claude genuine autonomy — it decides what to call and when to stop. Code provides tools and context; Claude provides judgment. This is the line between \"AI as function call\" and \"AI as agent.\""
+      },
+      {
+        "decision": "**Non-agentic AI calls**",
+        "what": "`tool_choice=\"tool\"` (forced) for the Intent Filter",
+        "why": "The Intent Filter output must be deterministic and code-controlled. Forcing the tool call guarantees the response shape; Claude doesn't need to decide whether to call it."
+      },
+      {
+        "decision": "**Tool design**",
+        "what": "`send_nudge` and `skip_nudge` as deliberate opposites; both require a reason",
+        "why": "No silent no-op path. Claude must make an explicit binary decision and provide reasoning — this produces a clean audit trail in logs and forces deliberate behaviour rather than drift."
+      },
+      {
+        "decision": "**Business rules in tool schema**",
+        "what": "Urgency thresholds (low 5–9d / medium 10–13d / high 14+d) live in `input_schema` description fields",
+        "why": "Business logic belongs where Claude reads it. Changing a threshold means editing the schema, not the application code — no redeployment of conditional logic required."
+      },
+      {
+        "decision": "**Stateless agent API**",
+        "what": "Full context (purchase history, days elapsed, current list) sent on every agent request — no server-side session state",
+        "why": "Simpler, cheaper, more reliable. Each request is self-contained; no state drift between calls, no session storage to maintain. Horizontal scaling is trivial."
+      },
+      {
+        "decision": "**Agent safety nets**",
+        "what": "`MAX_ITERATIONS = 10` hard cap + hardcoded fallback result if Claude never calls a tool",
+        "why": "Prevents infinite loops and runaway API spend. If Claude produces no tool call after the cap, the caller still gets a valid deterministic response — the system never hangs."
+      },
+      {
+        "decision": "**Two-layer caching**",
+        "what": "`node-cache` in gateway (10 min TTL) + `TTLCache` in brain",
+        "why": "Cache hits at the gateway never reach the brain or Claude API — that's the primary cost lever. The brain cache provides a second line for any requests that bypass the gateway. Projected ~60% fewer API calls at 60% hit rate."
+      },
+      {
+        "decision": "**Log storage**",
+        "what": "Structured JSON to stdout — no logging database",
+        "why": "Logs are a stream, not a table. Railway captures stdout automatically; a Logtail HTTP drain makes all JSON fields (`input_tokens`, `latency_ms`, `request_id`) instantly searchable. Writing logs to Postgres would be slow, expensive, and the wrong query pattern."
+      },
+      {
+        "decision": "**Correlation IDs**",
+        "what": "`X-Request-ID` generated at gateway, forwarded to brain, stored in `ContextVar`, logged on every event",
+        "why": "A single `grep` across both services reconstructs a complete user action — from the gateway request through all Claude iterations — without cross-referencing timestamps or guessing."
+      },
+      {
+        "decision": "**AI response handling**",
+        "what": "`re.sub` strips `` ```json``` `` fences before every `json.loads()` call",
+        "why": "Claude reliably wraps JSON in markdown code blocks even when prompted not to. `json.loads()` fails on the backtick with a cryptic error. Stripping first is a defensive pattern that belongs in every service that parses Claude's output."
+      },
+      {
+        "decision": "**Mobile framework**",
+        "what": "React Native + Expo SDK 54 with Expo Router",
+        "why": "Single codebase for iOS and Android; Expo handles native modules, build tooling, and OTA updates. Expo Router gives file-based navigation consistent with modern web conventions."
+      },
+      {
+        "decision": "**Mobile state**",
+        "what": "Zustand + AsyncStorage",
+        "why": "Zustand is lighter than Redux with no boilerplate. AsyncStorage gives offline-first persistence — shopping list and history survive app restarts with no backend dependency in the MVP."
+      },
+      {
+        "decision": "**GPS store detection**",
+        "what": "Haversine distance formula, polled every 30 seconds",
+        "why": "Cross-platform and permission-light compared to OS geofencing APIs. 30s polling is fine-grained enough for store entry detection without draining battery. Deterministic and easy to test."
+      },
+      {
+        "decision": "**Mobile distribution**",
+        "what": "EAS (Expo Application Services) for builds; APK for Android testers, Expo Go for iOS until Apple Developer enrollment",
+        "why": "EAS manages Android/iOS build toolchains without local Xcode or Android Studio setup. APK distribution is immediate for Android; Expo Go covers iOS without the $99/yr enrollment cost for early-stage testing."
+      },
+      {
+        "decision": "**Behavior specification**",
+        "what": "`test_cases.json` with 12 input/expected-decision pairs (TC-01→TC-12)",
+        "why": "AI agents need behavior specs, not just unit tests. Each case defines what Claude *should decide* given a specific context — a PM-level contract that doubles as a regression suite."
+      }
+    ]
+  },
+  "conceptsPracticed": {
+    "Agentic AI": [
+      {
+        "concept": "Tool use loop",
+        "wherePracticed": "`nudge_agent.py`, `restock_agent.py` — `tool_use` blocks fed back as `tool_result` each iteration"
+      },
+      {
+        "concept": "`tool_choice` as a design lever",
+        "wherePracticed": "Agents use `\"auto\"` (Claude decides freely); Intent Filter uses `\"tool\"` (code forces the call); Chat bot uses neither"
+      },
+      {
+        "concept": "Tool design as interface contract",
+        "wherePracticed": "`send_nudge` / `skip_nudge` as deliberate opposites — Claude must make an explicit binary choice; no silent no-op path"
+      },
+      {
+        "concept": "Tool schema as business rule",
+        "wherePracticed": "Urgency thresholds (low 5–9d · medium 10–13d · high 14+d) live in `input_schema` description fields, not in application code"
+      },
+      {
+        "concept": "Agentic loop safety nets",
+        "wherePracticed": "`MAX_ITERATIONS = 10` cap + hardcoded skip fallback + `agent.fallback` log event if Claude never calls a tool"
+      },
+      {
+        "concept": "Stateless agent API",
+        "wherePracticed": "Full context (purchase history, days elapsed, current list) sent on every request — no session state held server-side"
+      },
+      {
+        "concept": "History as agent context",
+        "wherePracticed": "`purchase_history` + `days_since_last_trip` give Claude everything it needs, reconstructed fresh on each call"
+      },
+      {
+        "concept": "AI reliability pattern",
+        "wherePracticed": "Claude wraps JSON in ` ```json``` ` fences — `re.sub` strips them before `json.loads()` in `ai.py`; pattern documented for all future services"
+      },
+      {
+        "concept": "Human-in-the-loop by design",
+        "wherePracticed": "Claude decides *whether* to notify, *what* to write, and at *what urgency* — humans receive the result, not configure it"
+      },
+      {
+        "concept": "AI copy generation",
+        "wherePracticed": "Push notification title + body written by Claude from context — specific, not templated; schema constrains format, not content"
+      }
+    ],
+    "AI PM": [
+      {
+        "concept": "Agentic vs. non-agentic taxonomy",
+        "wherePracticed": "8-feature decision matrix in this README: who decides, Claude call count, `tool_choice` mode, output format — for every feature"
+      },
+      {
+        "concept": "AI cost control as architecture",
+        "wherePracticed": "Two cache layers designed first: `node-cache` (gateway, 10 min TTL) + `TTLCache` (brain) — ~60% fewer API calls at 60% hit rate"
+      },
+      {
+        "concept": "AI observability",
+        "wherePracticed": "`input_tokens`, `output_tokens`, `latency_ms` logged on every Claude call — maps to cost per loop iteration, not just per request"
+      },
+      {
+        "concept": "Correlation ID for AI tracing",
+        "wherePracticed": "`X-Request-ID` forwarded gateway → brain, stored in `ContextVar` — one `grep` reconstructs a full user tap across both services"
+      },
+      {
+        "concept": "Evaluation strategy for agents",
+        "wherePracticed": "`test_cases.json` v0.3.0 — 12 input/expected-decision pairs defining what Claude *should decide*, not just valid output"
+      },
+      {
+        "concept": "AI security architecture",
+        "wherePracticed": "`ANTHROPIC_API_KEY` isolated in brain; gateway communicates via `X-Internal-Secret` and never sees the AI key"
+      },
+      {
+        "concept": "Prompt engineering for structured output",
+        "wherePracticed": "System prompt includes exact JSON schema; decision guidelines in prompt body, not in code conditionals"
+      },
+      {
+        "concept": "LLM as decision engine",
+        "wherePracticed": "Threshold logic (stale vs. fresh, nudge vs. skip) owned by Claude — no hardcoded rules in application code"
+      },
+      {
+        "concept": "AI debugging in production",
+        "wherePracticed": "`stop_reason`, token counts, and per-iteration latency → root-caused a live 502 to Claude wrapping JSON in code fences"
+      },
+      {
+        "concept": "Skills as codified AI workflow",
+        "wherePracticed": "SKILL.md system explored to encode deploy, test, and agent-scaffold steps as project-specific slash commands"
+      }
+    ],
+    "Classic PM": [
+      {
+        "concept": "MVP scoping",
+        "wherePracticed": "8 features shipped; 9 deferred — each roadmap item includes a \"why agentic\" rationale, not just a feature name"
+      },
+      {
+        "concept": "PR-driven delivery",
+        "wherePracticed": "9 PRs, each single-scope, conventional commit style; descriptions explain *why*, not just what"
+      },
+      {
+        "concept": "Go-live planning",
+        "wherePracticed": "5-step checklist: Railway services via GraphQL API, root directory config, env vars, EAS build, smoke tests"
+      },
+      {
+        "concept": "Cost control as PM decision",
+        "wherePracticed": "Caching designed before feature code — \"~60% fewer AI calls\" stated as a product metric, not an engineering footnote"
+      },
+      {
+        "concept": "Security as architecture",
+        "wherePracticed": "Brain not publicly routable — a trust boundary decision made at product design level, not retrofitted after"
+      },
+      {
+        "concept": "Documentation as product artifact",
+        "wherePracticed": "README as external landing page; CLAUDE.md as internal spec — both updated in every PR"
+      },
+      {
+        "concept": "Test cases as behavior contract",
+        "wherePracticed": "`test_cases.json` TC-01→TC-12 defines what Claude should decide per scenario — a PM spec, not just a QA checklist"
+      },
+      {
+        "concept": "Context continuity",
+        "wherePracticed": "`.claude/ghost-cart-project-plan.md` + memory system — any session resumes without re-establishing context"
+      },
+      {
+        "concept": "Mobile distribution strategy",
+        "wherePracticed": "APK (internal testers) → AAB (Play Store) → TestFlight (iOS, blocked on Apple enrollment) — three tiers with explicit prerequisites"
+      },
+      {
+        "concept": "Dependency tracking",
+        "wherePracticed": "Live blocker list: Google Places key (external), Logtail drain (Railway config), iOS build ($99/yr enrollment)"
+      }
+    ]
+  },
+  "reflections": [
+    {
+      "tag": "AI",
+      "call": "Use LangChain to talk to Claude",
+      "whyWrong": "LangChain is built for chaining multiple models and RAG pipelines — ~150 MB of abstraction for a single Claude endpoint. Its own abstraction layer adds a failure surface and makes the integration harder to debug.",
+      "correction": "Used the Anthropic Python SDK directly (`anthropic.AsyncAnthropic`). One dependency, fully typed, no layer between the code and Claude's API behaviour."
+    },
+    {
+      "tag": "Product",
+      "call": "\"The app has nothing agentic — I've failed as an AI PM\"",
+      "whyWrong": "The framing was wrong, not the facts. The GPS→store detection→intent filter chain was a perception-decision-action loop — just shallow, because *code* was making all decisions for Claude. Real diagnosis: \"Claude is a function call, not an agent.\"",
+      "correction": "Built the Restock Agent with `tool_choice=\"auto\"` and a while-loop. Then the Nudge Agent. Two genuinely agentic features, designed from first principles."
+    },
+    {
+      "tag": "Process",
+      "call": "\"I've already integrated GitHub — Claude can push directly\"",
+      "whyWrong": "Claude Code can't authenticate to GitHub on your behalf. OAuth requires the user to run the flow in their own terminal — Claude only picks up credentials already stored.",
+      "correction": "Ran `gh auth login` and `railway login` manually. Claude then used the stored tokens for all subsequent git and Railway operations."
+    },
+    {
+      "tag": "Product",
+      "call": "Build an MCP to query Walmart's real inventory database",
+      "whyWrong": "Walmart has no public API for real-time inventory. Designing a feature spec around a data source that doesn't exist is a PM mistake — validate supply before building the feature.",
+      "correction": "Moved to roadmap with a note that a mock/simulated inventory endpoint covers the demo and the technical pattern."
+    },
+    {
+      "tag": "AI",
+      "call": "\"Do we need a database to store logs?\"",
+      "whyWrong": "Logs are an append-only stream, not relational data. Writing token counts and latency to Postgres would be slow, expensive at scale, and the wrong query pattern — logs need full-text search, not SQL joins.",
+      "correction": "stdout → Railway captures it → Logtail HTTP log drain. No extra DB, no schema. All structured fields (`input_tokens`, `latency_ms`, `request_id`) immediately searchable."
+    },
+    {
+      "tag": "Process",
+      "call": "Plan on TestFlight for 2 iOS testers right away",
+      "whyWrong": "TestFlight requires the Apple Developer Program ($99/yr). Without enrollment you can't upload builds, create TestFlight groups, or distribute to real devices outside Expo Go.",
+      "correction": "iOS testers use Expo Go (scan QR, free, immediate). Android testers get an EAS APK link. TestFlight is an explicit roadmap item with its prerequisite stated."
+    },
+    {
+      "tag": "Technical",
+      "call": "`eas init --id \"ghost-cart\"` with a human-readable slug",
+      "whyWrong": "EAS's `--id` flag expects a UUID, not a slug. The command silently wrote `\"projectId\": \"ghost-cart\"` into `app.json`, causing GraphQL errors on every EAS build with no helpful error message.",
+      "correction": "Removed the bad block and ran `eas init --non-interactive --force`, which generated the proper UUID (`0bfcd389-eca1-4cd6-a3eb-dd99f7d2ee08`)."
+    },
+    {
+      "tag": "Technical",
+      "call": "`cd brain && railway up` to deploy just the brain",
+      "whyWrong": "Railway always uploads from the git root regardless of shell directory. Running from `brain/` still sent the entire monorepo; Railway couldn't detect the language without a root directory configured.",
+      "correction": "Set `rootDirectory: \"brain\"` and `rootDirectory: \"gateway\"` per service via the Railway GraphQL API; deployed from repo root with `railway up --service <ID>`."
+    },
+    {
+      "tag": "Technical",
+      "call": "Assumed `railway service create` was a valid CLI command",
+      "whyWrong": "Railway CLI v4 has no `service create` subcommand. Service management beyond basic deploys requires the dashboard or GraphQL API — a gap that only surfaces when you try it.",
+      "correction": "Created the gateway service via the Railway GraphQL `serviceCreate` mutation, then used the returned ID for all subsequent deploys."
+    },
+    {
+      "tag": "Technical",
+      "call": "Started the EAS Android build without a `.npmrc`",
+      "whyWrong": "Expo SDK 54 pins `react@19.1.0` but an indirect dep (`react-dom@19.2.4`) requires `react@^19.2.4`. The EAS build server fails with a peer conflict that doesn't appear in local dev.",
+      "correction": "Added `mobile/.npmrc` with `legacy-peer-deps=true`. EAS Build picks it up automatically — no config workarounds needed."
+    },
+    {
+      "tag": "AI",
+      "call": "Assumed Claude would return raw JSON with no special handling",
+      "whyWrong": "Claude often wraps JSON in ` ```json ``` ` markdown blocks even when the prompt asks for JSON. `json.loads()` fails on the backtick — a silent 502 in production that's hard to trace.",
+      "correction": "Added `re.sub` stripping before every `json.loads()` call in `ai.py`. Pattern documented in CLAUDE.md for all future services."
+    },
+    {
+      "tag": "Process",
+      "call": "Asked about \"skills.md\" as a standard Claude Code filename",
+      "whyWrong": "There is no file called `skills.md`. Treating an assumed filename as a known spec without verifying first is a gap between confidence and knowledge.",
+      "correction": "Looked up the real format from existing plugin files: it's `SKILL.md` (uppercase) inside `.claude/skills/<name>/`, with YAML frontmatter controlling invocation mode and tool access."
+    },
+    {
+      "tag": "Process",
+      "call": "Create a PR containing the HTML artifact file",
+      "whyWrong": "An HTML file renders as raw markup in GitHub's file viewer and doesn't integrate with the docs people actually read. A browser deliverable isn't useful as a repo source file.",
+      "correction": "Updated `README.md`, `CLAUDE.md`, and the project plan with markdown tables instead — embedded in the docs that already exist, no orphan file."
+    }
+  ],
+  "lastParsed": "2026-09-20T03:43:22.309Z"
+}
